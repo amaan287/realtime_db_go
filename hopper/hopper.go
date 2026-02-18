@@ -2,25 +2,33 @@ package hopper
 
 import (
 	"fmt"
+	"os"
 
-	"github.com/google/uuid"
 	"go.etcd.io/bbolt"
 )
 
 const (
 	defaultDbName = "default"
+	ext           = "hopper"
 )
 
-type M map[string]string
+type Map map[string]string
 
-type Collection struct {
-	*bbolt.Bucket
-}
 type Hopper struct {
+	currentDatabase string
+	*Options
 	db *bbolt.DB
 }
 
-func New() (*Hopper, error) {
+func New(options ...OptFunc) (*Hopper, error) {
+	opts := &Options{
+		Encoder: JSONEncoder{},
+		Decoder: JSONDecoder{},
+		DBName:  defaultDbName,
+	}
+	for _, fn := range options {
+		fn(opts)
+	}
 	dbname := fmt.Sprintf("%s.hopper", defaultDbName)
 	db, err := bbolt.Open(dbname, 066, nil)
 	if err != nil {
@@ -32,7 +40,12 @@ func New() (*Hopper, error) {
 	}, nil
 }
 
-func (h *Hopper) CreateCollection(name string) (*Collection, error) {
+func (h *Hopper) DropDatabase(name string) error {
+	dbname := fmt.Sprintf("%s.%s", name, ext)
+	return os.Remove(dbname)
+}
+
+func (h *Hopper) CreateCollection(name string) (*bbolt.Bucket, error) {
 	tx, err := h.db.Begin(true)
 	if err != nil {
 		return nil, err
@@ -44,6 +57,9 @@ func (h *Hopper) CreateCollection(name string) (*Collection, error) {
 		return nil, err
 	}
 
-	return &Collection{Bucket: bucket}, nil
+	return bucket, nil
 
+}
+func (h *Hopper) Coll(name string) *Filter {
+	return NewFilter(h, name)
 }
